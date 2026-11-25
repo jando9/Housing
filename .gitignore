@@ -1,5 +1,10 @@
 */Data/*
+*.tif
+*.csv
+*.xl*
 load_log.txt
 .venv
 .vscode
 *.ini
+.env
+venv
