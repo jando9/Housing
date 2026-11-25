@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS shortlist (
     url            text,                      -- built from suburb + listing_id
     listing_id     bigint,
     suburb         text,
+    city           text,
     price_display  text,
     asking_price   numeric,
     bedrooms       smallint,
@@ -86,6 +87,7 @@ CREATE INDEX IF NOT EXISTS shortlist_geom_gix ON shortlist USING gist (geom);
 -- in case the table was created by an earlier version of this script
 ALTER TABLE shortlist ADD COLUMN IF NOT EXISTS listing_id bigint;
 ALTER TABLE shortlist ADD COLUMN IF NOT EXISTS suburb text;
+ALTER TABLE shortlist ADD COLUMN IF NOT EXISTS city text;
 CREATE INDEX IF NOT EXISTS shortlist_listing_id_ix ON shortlist (listing_id);
 """
 
@@ -101,10 +103,10 @@ LIMIT 40
 
 UPSERT_SQL = f"""
 INSERT INTO shortlist (
-    address_id, address_input, matched_address, match_score, url, listing_id, suburb, price_display,
+    address_id, address_input, matched_address, match_score, url, listing_id, suburb, city, price_display,
     asking_price, bedrooms, bathrooms, floor_area_m2, land_area_m2, notes, geom
 )
-SELECT %(address_id)s, %(address_input)s, a.full_address, %(score)s, %(url)s, %(listing_id)s, %(suburb)s, %(price_display)s,
+SELECT %(address_id)s, %(address_input)s, a.full_address, %(score)s, %(url)s, %(listing_id)s, %(suburb)s, %(city)s, %(price_display)s,
        %(asking_price)s, %(bedrooms)s, %(bathrooms)s, %(floor_area_m2)s, %(land_area_m2)s, %(notes)s, a.geom
 FROM {ADDR_TABLE} a
 WHERE a.address_id = %(address_id)s
@@ -114,6 +116,7 @@ ON CONFLICT (address_id) DO UPDATE SET
     url = EXCLUDED.url,
     listing_id = EXCLUDED.listing_id,
     suburb = EXCLUDED.suburb,
+    city = EXCLUDED.city,
     price_display = EXCLUDED.price_display,
     asking_price = EXCLUDED.asking_price,
     bedrooms = EXCLUDED.bedrooms,
@@ -208,7 +211,8 @@ def address_variants(address: str):
     return list(dict.fromkeys(v.strip() for v in variants if v and v.strip()))
 
 
-URL_BASE = "https://www.trademe.co.nz/a/property/residential/sale/canterbury/christchurch-city"
+CHCH_URL_BASE = "https://www.trademe.co.nz/a/property/residential/sale/canterbury/christchurch-city"
+DUNEDIN_URL_BASE = "https://www.trademe.co.nz/a/property/residential/sale/otago/dunedin"
 
 
 def slugify(text: str) -> str:
@@ -225,10 +229,19 @@ def parse_listing_id(value):
     return int(m.group(1)) if m else None
 
 
-def listing_url(suburb, listing_id):
+def listing_url(suburb, listing_id, city):
     if not (suburb and listing_id):
         return None
-    return f"{URL_BASE}/{slugify(suburb)}/listing/{listing_id}"
+
+    city_key = (city or "Christchurch").strip().casefold()
+    if city_key == "christchurch":
+        url_base = CHCH_URL_BASE
+    elif city_key == "dunedin":
+        url_base = DUNEDIN_URL_BASE
+    else:
+        return None
+
+    return f"{url_base}/{slugify(suburb)}/listing/{listing_id}"
 
 
 def search_address(address: str, suburb) -> str:
@@ -298,11 +311,14 @@ def main():
                 if not address:
                     continue
                 suburb = clean(row.get("suburb"))
+                city = clean(row.get("city")) or "Christchurch"
                 listing_id = parse_listing_id(row.get("listing_id"))
                 if clean(row.get("listing_id")) and listing_id is None:
                     print(f"  note: couldn't read a listing ID from '{row.get('listing_id')}' ({address})")
                 if listing_id and not suburb:
                     print(f"  note: no suburb for {address}, so no Trade Me URL was built")
+                elif listing_id and city.casefold() not in ("christchurch", "dunedin"):
+                    print(f"  note: unsupported city '{city}' for {address}, so no Trade Me URL was built")
                 match = find_match(cur, search_address(address, suburb))
                 if not match:
                     unmatched.append(address)
@@ -314,9 +330,10 @@ def main():
                     "address_id": address_id,
                     "address_input": address,
                     "score": score,
-                    "url": listing_url(suburb, listing_id),
+                    "url": listing_url(suburb, listing_id, city),
                     "listing_id": listing_id,
                     "suburb": suburb,
+                    "city": city,
                     "price_display": clean(row.get("price_display")),
                     "asking_price": to_int(row.get("asking_price")),
                     "bedrooms": to_int(row.get("bedrooms")),
