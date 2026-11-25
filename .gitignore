@@ -1,5 +1,5 @@
 */Data/*
-*.tif
+*.tif*
 *.csv
 *.xl*
 load_log.txt
