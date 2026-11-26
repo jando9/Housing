@@ -2,4 +2,12 @@
 set /p CITY=Enter city name:
 setlocal
 cd /d "%~dp0"
-python sunmap.py "%CITY%\Data\new-zealand-lidar-1m-dsm\clipped_suburbs_DSM.tif" --out "%CITY%\Data\winter_sun.tif"
+python -u Scripts/sunmap.py "%CITY%\Data\clipped_suburbs_dsm.tif" --out "%CITY%\Data\winter_sun.tif"
+if %errorlevel% neq 0 (
+    echo [%time%] ERROR: script failed with code %errorlevel%
+    pause
+    exit /b %errorlevel%
+)
+
+echo [%time%] Script finished.
+pause
