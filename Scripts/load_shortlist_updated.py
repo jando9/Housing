@@ -36,7 +36,8 @@ ADDR_TABLE = "linz.nz_street_address"   # change here if you loaded it under ano
 def load_database_password():
     password = os.environ.get("PASSWORD")
     if password is None:
-        env_path = Path(__file__).resolve().parents[2] / ".env"
+        env_path = Path(__file__).resolve().parents[1] / ".env"
+        print(f"Reading database password from {env_path}")
         try:
             lines = env_path.read_text(encoding="utf-8").splitlines()
         except OSError as exc:
